@@ -1,0 +1,10 @@
+gs.exe
+
+# CMake outputs
+gs.sublime-project
+
+# CMake stuff
+CMakeCache.txt
+CMakeFiles
+Makefile
+cmake_install.cmake
