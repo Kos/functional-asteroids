@@ -2,6 +2,9 @@ gs.exe
 
 # CMake outputs
 gs.sublime-project
+gs.sublime-workspace
+.project
+.cproject
 
 # CMake stuff
 CMakeCache.txt

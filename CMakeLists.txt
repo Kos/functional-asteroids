@@ -3,7 +3,7 @@ CMAKE_MINIMUM_REQUIRED( VERSION 2.8 )
 SET( PROJ_NAME      "gs" )
 SET( PROJ_SOURCES   "src/main.cpp" )
 SET( PROJ_INCLUDES  "inc" )
-SET( PROJ_LIBRARIES "" )
+SET( PROJ_LIBRARIES "-lglfw3 -lopengl32" )
 
 PROJECT( ${PROJ_NAME} )
 
