@@ -8,6 +8,7 @@
 #include "GL/wglext.h"
 #include "GL/glu.h"
 #include "foo.h"
+#include "countof.h"
 
 using std::cout;
 using std::cerr;
@@ -16,9 +17,15 @@ using std::vector;
 using std::list;
 using std::function;
 
+
 #include "GLFW/glfw3.h"
 
-void ding(float x, float y) {
+void ding_r(float x, float y, float r);
+void ding(float x, float y, float r=0) {
+	if (r) {
+		ding_r(x, y, r);
+		return;
+	}
 	float a = 0.1;
 	float b = 0.15;
 	float p[] = {
@@ -27,9 +34,31 @@ void ding(float x, float y) {
 		x-a, y,
 		x, y-b
 	};
+	int p_c = COUNTOF(p);
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glVertexPointer(2, GL_FLOAT, 0, p);
-	glDrawArrays(GL_LINE_LOOP, 0, 4);
+	glDrawArrays(GL_LINE_LOOP, 0, p_c/2);
+}
+
+void ding_r(float x, float y, float r) {
+	float a = 0.1;
+	float b = 0.15;
+	float p[] = {
+		a, 0,
+		0, b,
+		-a, 0,
+		0, -b
+	};
+	int p_c = COUNTOF(p);
+	for (int i=0; i<p_c; i+=2) {
+		float xx = cos(r) * p[i] - sin(r) * p[i+1];
+		float yy = sin(r) * p[i] + cos(r) * p[i+1];
+		p[i] = xx + x;;
+		p[i+1] = yy + y;
+	}
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(2, GL_FLOAT, 0, p);
+	glDrawArrays(GL_LINE_LOOP, 0, p_c/2);
 }
 
 struct vec2 {
@@ -153,25 +182,26 @@ void Player(World& w, Object& o) {
 
 	w.on_tick([&o, angle](){
 		if (glfwGetKey(window, GLFW_KEY_RIGHT)) {
-			*angle += 0.1;
+			*angle -= 0.1;
 		}
 		if (glfwGetKey(window, GLFW_KEY_LEFT)) {
-			*angle -= 0.1;
+			*angle += 0.1;
 		}
 		if (glfwGetKey(window, GLFW_KEY_UP)) {
 			float acc = 0.1;
-			cout << *angle;
 			o.speed.x += cos(*angle)*acc;
 			o.speed.y += sin(*angle)*acc;
 		}
+		ding_r(o.pos.x, o.pos.y, *angle);
+	});
+	w.bind_key(GLFW_KEY_SPACE, [&w, &o, angle](){
+		auto& as = w.add_object();
+		as.pos = o.pos;
+		float v = 4;
+		as.speed.x = cos(*angle)*v;
+		as.speed.y = sin(*angle)*v;
 	});
 
-	w.bind_key(GLFW_KEY_SPACE, [&o](){
-		float speed = 0.3;
-		float angle = std::uniform_real_distribution<float>(0, 44./7)(rng);
-		o.speed.x = cos(angle)*speed;
-		o.speed.y = sin(angle)*speed;
-	});
 }
 
 int main(void)
