@@ -79,13 +79,31 @@ struct Object {
 	long guid = random_guid();
 	vec2 pos;
 	vec2 speed;
+
+	bool operator==(const Object& other) {
+		return guid == other.guid;
+	}
+};
+
+
+
+
+template<typename T, typename... Args>
+struct OwnedCallback {
+	Object& o;
+	function<T(Args...)> cb;
+
+	T operator()(Args... args) {
+		return cb(args...);
+	}
 };
 
 struct World {
 	list<Object> objects; // could be a vector, but reallocs will kill references in callbacks
-	list<function<void()>> tick_events;
-	list<function<void()>> queue;
-	list<function<void(int, int, int, int)>> key_events;
+	list<OwnedCallback<void>> tick_events;
+	list<OwnedCallback<void>> queue;
+	list<OwnedCallback<void, int, int, int, int>> key_events;
+	list<Object*> killQueue;
 
 	void tick(float dt) {
 		for (auto& o : objects) {
@@ -95,6 +113,10 @@ struct World {
 		for (auto t : tick_events) {
 			t();
 		}
+		for (auto o : killQueue) {
+			real_kill(*o);
+		}
+		killQueue.erase(killQueue.begin(), killQueue.end());
 	}
 
 	Object* find_by_guid(guid g) {
@@ -104,6 +126,7 @@ struct World {
 			}
 		}
 		return 0;
+
 	}
 
 	Object& add_object() {
@@ -124,16 +147,28 @@ struct World {
 		}
 	}
 
-	void bind_key(int key, std::function<void()> callback) {
-		key_events.push_back([=](int key2, int scancode, int action, int mods){
+	void bind_key(int key, Object& o, std::function<void()> callback) {
+		key_events.push_back(OwnedCallback<void, int, int, int, int>{o, [=](int key2, int scancode, int action, int mods){
 			if (key2 == key and action == GLFW_PRESS) {
 				callback();
 			}
-		});
+		}});
 	}
 
-	void on_tick(std::function<void()> callback) {
-		tick_events.push_back(callback);
+	void on_tick(Object& o, std::function<void()> callback) {
+		tick_events.push_back(OwnedCallback<void>{o, callback});
+	}
+
+	void kill(Object& o) {
+		killQueue.push_back(&o);
+	}
+
+	void real_kill(Object& o) {
+		cout << "Killing: " << o.guid << endl;
+		key_events.remove_if([&](OwnedCallback<void, int, int, int, int>& oc) { return oc.o == o; });
+		tick_events.remove_if([&](OwnedCallback<void>& oc) { return oc.o == o; });
+		queue.remove_if([&](OwnedCallback<void>& oc) { return oc.o == o; });
+		objects.remove(o);
 	}
 };
 
@@ -146,7 +181,7 @@ void cb_key(GLFWwindow*, int key, int scancode, int action, int mods) {
 
 
 void WrapScreen(World& w, Object& o) {
-	w.tick_events.push_back([&o](){
+	w.tick_events.push_back(OwnedCallback<void>{o, [&o](){
 		float m = 0.1;
 		float xa = -1-m, xb = 1+m, ya=-1-m, yb=1+m;
 		float xw=xb-xa, yw=yb-ya;
@@ -162,7 +197,16 @@ void WrapScreen(World& w, Object& o) {
 		if (o.pos.y > yb) {
 			o.pos.y -= yw;
 		}
-	});
+	}});
+}
+
+void KillWhenExitingScreen(World& w, Object& o) {
+	w.tick_events.push_back(OwnedCallback<void>{o, [&w, &o]() { // This can run less often
+		float xa=-1, xb=1, ya=-1, yb=1;
+		if (o.pos.x < xa or o.pos.x > xb or o.pos.y < ya or o.pos.y > yb) {
+			w.kill(o);
+		}
+	}});
 }
 
 void Asteroid(World& w, Object& o) {
@@ -176,11 +220,17 @@ void Asteroid(World& w, Object& o) {
 }
 
 
+
+void Bullet(World& w, Object& o) {
+	KillWhenExitingScreen(w, o);
+}
+
+
 void Player(World& w, Object& o) {
 	Asteroid(w, o);
 	std::shared_ptr<float> angle(new float);
 
-	w.on_tick([&o, angle](){
+	w.on_tick(o, [&o, angle](){
 		if (glfwGetKey(window, GLFW_KEY_RIGHT)) {
 			*angle -= 0.1;
 		}
@@ -194,14 +244,14 @@ void Player(World& w, Object& o) {
 		}
 		ding_r(o.pos.x, o.pos.y, *angle);
 	});
-	w.bind_key(GLFW_KEY_SPACE, [&w, &o, angle](){
+	w.bind_key(GLFW_KEY_SPACE, o, [&w, &o, angle](){
 		auto& as = w.add_object();
+		Bullet(w, as);
 		as.pos = o.pos;
 		float v = 4;
 		as.speed.x = cos(*angle)*v;
 		as.speed.y = sin(*angle)*v;
 	});
-
 }
 
 int main(void)
