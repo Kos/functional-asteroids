@@ -64,6 +64,11 @@ void ding_r(float x, float y, float r) {
 struct vec2 {
 	float x;
 	float y;
+
+	float dist2(vec2 b) {
+		float dx = b.x-x, dy = b.y-y, len2=dx*dx+dy*dy;
+		return len2;
+	}
 };
 
 std::mt19937 rng;
@@ -98,12 +103,38 @@ struct OwnedCallback {
 	}
 };
 
+struct Collision {
+	// For now, simple quadratic collision
+	struct Entry {
+		Object& o;
+	};
+	list<Entry> chaff;
+	list<Entry> bullets;
+
+	void check(function<void(Object&, Object&)> fn) {
+		float size = 0.1;
+		for (auto x : chaff) {
+			for (auto y : bullets) {
+				if (x.o.pos.dist2(y.o.pos) < size*size) fn(x.o, y.o);
+			}
+		}
+		for (auto x : chaff) {
+			for (auto y : chaff) {
+				if (x.o == y.o) continue;
+				if (x.o.pos.dist2(y.o.pos) < size*size) fn(x.o, y.o);
+			}
+		}
+	}
+};
+
 struct World {
 	list<Object> objects; // could be a vector, but reallocs will kill references in callbacks
 	list<OwnedCallback<void>> tick_events;
 	list<OwnedCallback<void>> queue;
 	list<OwnedCallback<void, int, int, int, int>> key_events;
 	list<Object*> killQueue;
+
+	Collision collisions;
 
 	void tick(float dt) {
 		for (auto& o : objects) {
@@ -113,6 +144,9 @@ struct World {
 		for (auto t : tick_events) {
 			t();
 		}
+		collisions.check([](Object& a, Object& b) {
+			cout << "collision: " << a.guid << " x " << b.guid << endl;
+		});
 		for (auto o : killQueue) {
 			real_kill(*o);
 		}
@@ -168,7 +202,10 @@ struct World {
 		key_events.remove_if([&](OwnedCallback<void, int, int, int, int>& oc) { return oc.o == o; });
 		tick_events.remove_if([&](OwnedCallback<void>& oc) { return oc.o == o; });
 		queue.remove_if([&](OwnedCallback<void>& oc) { return oc.o == o; });
+		collisions.chaff.remove_if([&](Collision::Entry& e) { return e.o == o; });
+		collisions.bullets.remove_if([&](Collision::Entry& e) { return e.o == o; });
 		objects.remove(o);
+
 	}
 };
 
@@ -217,12 +254,13 @@ void Asteroid(World& w, Object& o) {
 	o.speed.x = cos(angle)*speed;
 	o.speed.y = sin(angle)*speed;
 	WrapScreen(w, o);
+	w.collisions.chaff.push_back(Collision::Entry{o});
 }
-
 
 
 void Bullet(World& w, Object& o) {
 	KillWhenExitingScreen(w, o);
+	w.collisions.bullets.push_back(Collision::Entry{o});
 }
 
 
@@ -253,6 +291,7 @@ void Player(World& w, Object& o) {
 		as.speed.y = sin(*angle)*v;
 	});
 }
+
 
 int main(void)
 {
@@ -321,5 +360,3 @@ int main(void)
 	glfwTerminate();
 	return 0;
 }
-
-
