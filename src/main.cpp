@@ -1,4 +1,5 @@
 #include <iostream>
+#include <array>
 #include <vector>
 #include <list>
 #include <functional>
@@ -14,50 +15,10 @@ using std::cout;
 using std::cerr;
 using std::endl;
 using std::vector;
+using std::array;
 using std::list;
 using std::function;
 
-
-void ding_r(float x, float y, float r);
-void ding(float x, float y, float r=0) {
-	if (r) {
-		ding_r(x, y, r);
-		return;
-	}
-	float a = 0.4;
-	float b = 0.4;
-	float p[] = {
-		x+a, y,
-		x, y+b,
-		x-a, y,
-		x, y-b
-	};
-	int p_c = COUNTOF(p);
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, 0, p);
-	glDrawArrays(GL_LINE_LOOP, 0, p_c/2);
-}
-
-void ding_r(float x, float y, float r) {
-	float a = 0.4;
-	float b = 0.4;
-	float p[] = {
-		a, 0,
-		0, b,
-		-a, 0,
-		0, -b
-	};
-	int p_c = COUNTOF(p);
-	for (int i=0; i<p_c; i+=2) {
-		float xx = cos(r) * p[i] - sin(r) * p[i+1];
-		float yy = sin(r) * p[i] + cos(r) * p[i+1];
-		p[i] = xx + x;;
-		p[i+1] = yy + y;
-	}
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(2, GL_FLOAT, 0, p);
-	glDrawArrays(GL_LINE_LOOP, 0, p_c/2);
-}
 
 struct vec2 {
 	float x;
@@ -125,6 +86,61 @@ struct Collision {
 	}
 };
 
+const float AST[] {
+	0.4, 0,
+	0, 0.4,
+	-0.4, 0,
+	0, -0.4,
+};
+const float SDX =.4, SYG=.8, SYD=.2, SYDD=.4;
+const float SHIP[] {
+	-SDX, -SYDD,
+	0, SYG,
+	SDX, -SYDD,
+	0, -SYD,
+};
+const float BULLET[] {
+	-1, 0,
+	1, 0
+};
+
+const float* const MODELS[] { AST, SHIP, BULLET };
+static constexpr int SIZES[] { 4, 4, 2 };
+
+
+struct Renderer {
+
+	struct Entry {
+		Object& o;
+		unsigned model;
+	};
+	list<Entry> entries;
+
+	void add(Object& o, unsigned model) {
+		entries.push_back(Entry { o, model });
+	}
+
+	void render() {
+		glEnableClientState(GL_VERTEX_ARRAY);
+		for (auto& e: entries) {
+			render(e);
+		}
+	}
+
+	void render(Entry& e) {
+		float x = e.o.pos.x;
+		float y = e.o.pos.y;
+		float r = 0;
+		const float* p = MODELS[e.model];
+		int c = SIZES[e.model];
+		glPushMatrix();
+		glTranslatef(x, y, 0);
+		glVertexPointer(2, GL_FLOAT, 0, p);
+		glDrawArrays(GL_LINE_LOOP, 0, c);
+		glPopMatrix();
+	}
+};
+
 struct World {
 	list<Object> objects; // could be a vector, but reallocs will kill references in callbacks
 	list<OwnedCallback<void>> tick_events;
@@ -133,6 +149,7 @@ struct World {
 	list<Object*> killQueue;
 
 	Collision collisions;
+	Renderer renderer;
 
 	void tick(float dt) {
 		for (auto& o : objects) {
@@ -202,6 +219,7 @@ struct World {
 		queue.remove_if([&](OwnedCallback<void>& oc) { return oc.o == o; });
 		collisions.chaff.remove_if([&](Collision::Entry& e) { return e.o == o; });
 		collisions.bullets.remove_if([&](Collision::Entry& e) { return e.o == o; });
+		renderer.entries.remove_if([&](Renderer::Entry& e) { return e.o == o; });
 		objects.remove(o);
 
 	}
@@ -245,8 +263,9 @@ void KillWhenExitingScreen(World& w, Object& o) {
 }
 
 void Asteroid(World& w, Object& o) {
-	o.pos.x = std::uniform_real_distribution<float>(-1, 1)(rng);
-	o.pos.y = std::uniform_real_distribution<float>(-1, 1)(rng);
+	w.renderer.add(o, 0);
+	o.pos.x = std::uniform_real_distribution<float>(-16, 16)(rng);
+	o.pos.y = std::uniform_real_distribution<float>(-9, 9)(rng);
 	float speed = 0.3;
 	float angle = std::uniform_real_distribution<float>(0, 44./7)(rng);
 	o.speed.x = cos(angle)*speed;
@@ -258,12 +277,17 @@ void Asteroid(World& w, Object& o) {
 
 void Bullet(World& w, Object& o) {
 	KillWhenExitingScreen(w, o);
+	w.renderer.add(o, 2);
 	w.collisions.bullets.push_back(Collision::Entry{o});
 }
 
 
 void Player(World& w, Object& o) {
-	Asteroid(w, o);
+	o.pos.x = o.pos.y = 0;
+	o.speed.x = o.speed.y = 0;
+	WrapScreen(w, o);
+	w.collisions.chaff.push_back(Collision::Entry{o});
+	w.renderer.add(o, 1);
 	std::shared_ptr<float> angle(new float);
 
 	w.on_tick(o, [&o, angle](){
@@ -278,13 +302,13 @@ void Player(World& w, Object& o) {
 			o.speed.x += cos(*angle)*acc;
 			o.speed.y += sin(*angle)*acc;
 		}
-		ding_r(o.pos.x, o.pos.y, *angle);
+		//ding_r(o.pos.x, o.pos.y, *angle);
 	});
 	w.bind_key(GLFW_KEY_SPACE, o, [&w, &o, angle](){
 		auto& as = w.add_object();
 		Bullet(w, as);
 		as.pos = o.pos;
-		float v = 4;
+		float v = 16;
 		as.speed.x = cos(*angle)*v;
 		as.speed.y = sin(*angle)*v;
 	});
@@ -347,9 +371,7 @@ int main(void)
 
 		glColor3f(.5,.2,0);
 		world.tick(dt);
-		for (auto o : world.objects) {
-			ding(o.pos.x, o.pos.y);
-		}
+		world.renderer.render();
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
