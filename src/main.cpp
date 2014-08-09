@@ -7,7 +7,7 @@
 #include "GL/gl.h"
 #include "GL/wglext.h"
 #include "GL/glu.h"
-#include "foo.h"
+#include "GLFW/glfw3.h"
 #include "countof.h"
 
 using std::cout;
@@ -18,16 +18,14 @@ using std::list;
 using std::function;
 
 
-#include "GLFW/glfw3.h"
-
 void ding_r(float x, float y, float r);
 void ding(float x, float y, float r=0) {
 	if (r) {
 		ding_r(x, y, r);
 		return;
 	}
-	float a = 0.1;
-	float b = 0.15;
+	float a = 0.4;
+	float b = 0.4;
 	float p[] = {
 		x+a, y,
 		x, y+b,
@@ -41,8 +39,8 @@ void ding(float x, float y, float r=0) {
 }
 
 void ding_r(float x, float y, float r) {
-	float a = 0.1;
-	float b = 0.15;
+	float a = 0.4;
+	float b = 0.4;
 	float p[] = {
 		a, 0,
 		0, b,
@@ -220,7 +218,7 @@ void cb_key(GLFWwindow*, int key, int scancode, int action, int mods) {
 void WrapScreen(World& w, Object& o) {
 	w.tick_events.push_back(OwnedCallback<void>{o, [&o](){
 		float m = 0.1;
-		float xa = -1-m, xb = 1+m, ya=-1-m, yb=1+m;
+		float xa = -16-m, xb = 16+m, ya=-9-m, yb=9+m;
 		float xw=xb-xa, yw=yb-ya;
 		if (o.pos.x < xa) {
 			o.pos.x += xw;
@@ -239,7 +237,7 @@ void WrapScreen(World& w, Object& o) {
 
 void KillWhenExitingScreen(World& w, Object& o) {
 	w.tick_events.push_back(OwnedCallback<void>{o, [&w, &o]() { // This can run less often
-		float xa=-1, xb=1, ya=-1, yb=1;
+		float xa=-16, xb=16, ya=-9, yb=9;
 		if (o.pos.x < xa or o.pos.x > xb or o.pos.y < ya or o.pos.y > yb) {
 			w.kill(o);
 		}
@@ -333,6 +331,10 @@ int main(void)
 		cerr << "VSync not available" << endl;
 	}
 
+	glMatrixMode(GL_PROJECTION);
+	glOrtho(-16, 16, -9, 9, 1, -1);
+	glMatrixMode(GL_MODELVIEW);
+
 	/* Loop until the user closes the window */
 	while (!glfwWindowShouldClose(window))
 	{
@@ -349,12 +351,8 @@ int main(void)
 			ding(o.pos.x, o.pos.y);
 		}
 
-		/* Swap front and back buffers */
 		glfwSwapBuffers(window);
-
-		/* Poll for and process events */
 		glfwPollEvents();
-
 	}
 
 	glfwTerminate();
