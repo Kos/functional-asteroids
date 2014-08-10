@@ -150,22 +150,25 @@ struct Renderer {
 
 struct Messages {
 
+	typedef function<bool(Object&)> callback_t;
+
 	struct Entry {
 		Object& listener;
 		const char* msg;
-		function<void(Object&)> cb;
+		callback_t cb;
 	};
 	list<Entry> entries;
 
-	void listen(Object& o, const char* msg, function<void(Object&)> cb) {
+	void listen(Object& o, const char* msg, callback_t cb) {
 		entries.push_back(Entry{o, msg, cb});
 	}
 
-	void send(Object& self, Object& tgt, const char* msg) {
+	bool send(Object& self, Object& tgt, const char* msg) {
 		auto i = std::find_if(entries.begin(), entries.end(), [&tgt, msg](Entry& e){ return e.listener == tgt && 0 == strcmp(e.msg, msg); });
 		if (i != entries.end()) {
-			i->cb(self);
+			return i->cb(self);
 		}
+		return false;
 	}
 };
 
@@ -307,8 +310,8 @@ void Asteroid(World& w, Object& o) {
 	WrapScreen(w, o);
 	w.collisions.chaff.push_back(Collision::Entry{o, size});
 	w.messages.listen(o, "damage", [&](Object&) {
-		cout << "Received damage, killing";
 		w.kill(o);
+		return true;
 	});
 }
 
@@ -319,8 +322,11 @@ void Bullet(World& w, Object& o) {
 	float size = 0.2;
 	w.collisions.bullets.push_back(Collision::Entry{o, size});
 	w.messages.listen(o, "collide", [&](Object& hit) {
-		cout << "Received collide, sending damage" << endl;
-		w.messages.send(o, hit, "damage");
+		bool s = w.messages.send(o, hit, "damage");
+		if (s) {
+			w.kill(o);
+		}
+		return true;
 	});
 }
 
