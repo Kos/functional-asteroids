@@ -255,6 +255,7 @@ struct World {
 		collisions.chaff.remove_if([&](Collision::Entry& e) { return e.o == o; });
 		collisions.bullets.remove_if([&](Collision::Entry& e) { return e.o == o; });
 		renderer.entries.remove_if([&](Renderer::Entry& e) { return e.o == o; });
+		messages.entries.remove_if([&](Messages::Entry& e) { return e.listener == o; });
 		objects.remove(o);
 
 	}
