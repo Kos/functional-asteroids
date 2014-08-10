@@ -144,11 +144,9 @@ struct Renderer {
 		glColor3ub(red, green, blue);
 		glPushMatrix();
 		glTranslatef(x, y, 0);
-		if (e.o.angle) {
-			float angle = (e.o.angle) - M_PI/2;
-			glRotatef(angle*180/M_PI, 0, 0, 1);
-			glScalef(e.scale, e.scale, 1);
-		}
+		float angle = (e.o.angle) - M_PI/2;
+		glRotatef(angle*180/M_PI, 0, 0, 1);
+		glScalef(e.scale, e.scale, 1);
 		glVertexPointer(2, GL_FLOAT, 0, p);
 		glDrawArrays(GL_LINE_LOOP, 0, c);
 		glPopMatrix();
