@@ -90,10 +90,10 @@ struct Collision {
 };
 
 const float AST[] {
-	0.4, 0,
-	0, 0.4,
-	-0.4, 0,
-	0, -0.4,
+	1, 0,
+	0, 1,
+	-1, 0,
+	0, -1,
 };
 const float SDX =.4, SYG=.8, SYD=.2, SYDD=.4;
 const float SHIP[] {
@@ -116,16 +116,19 @@ struct Renderer {
 	struct Entry {
 		Object& o;
 		unsigned model;
+		float scale;
 	};
 	list<Entry> entries;
 
-	void add(Object& o, unsigned model) {
-		entries.push_back(Entry { o, model });
+	void add(Object& o, unsigned model, float scale=1) {
+		entries.push_back(Entry { o, model, scale });
+		cout << "Added " << o.guid << " with scale " << scale << endl;
 	}
 
 	void render() {
 		glEnableClientState(GL_VERTEX_ARRAY);
 		for (auto& e: entries) {
+
 			render(e);
 		}
 	}
@@ -135,11 +138,16 @@ struct Renderer {
 		float y = e.o.pos.y;
 		const float* p = MODELS[e.model];
 		int c = SIZES[e.model];
+		unsigned char red = e.o.guid % 256,
+				green = e.o.guid / 256 % 256,
+				blue = e.o.guid / 256 / 256 % 256;
+		glColor3ub(red, green, blue);
 		glPushMatrix();
 		glTranslatef(x, y, 0);
 		if (e.o.angle) {
 			float angle = (e.o.angle) - M_PI/2;
 			glRotatef(angle*180/M_PI, 0, 0, 1);
+			glScalef(e.scale, e.scale, 1);
 		}
 		glVertexPointer(2, GL_FLOAT, 0, p);
 		glDrawArrays(GL_LINE_LOOP, 0, c);
@@ -193,7 +201,7 @@ struct World {
 			t();
 		}
 		collisions.check([this](Object& a, Object& b) {
-			cout << "collision: " << a.guid << " x " << b.guid << endl;
+			// cout << "collision: " << a.guid << " x " << b.guid << endl;
 			messages.send(a, b, "collide");
 			messages.send(b, a, "collide");
 		});
@@ -248,7 +256,6 @@ struct World {
 	}
 
 	void real_kill(Object& o) {
-		cout << "Killing: " << o.guid << endl;
 		key_events.remove_if([&](OwnedCallback<void, int, int, int, int>& oc) { return oc.o == o; });
 		tick_events.remove_if([&](OwnedCallback<void>& oc) { return oc.o == o; });
 		queue.remove_if([&](OwnedCallback<void>& oc) { return oc.o == o; });
@@ -298,23 +305,34 @@ void KillWhenExitingScreen(World& w, Object& o) {
 	}});
 }
 
-void Asteroid(World& w, Object& o) {
-	w.renderer.add(o, 0);
+void Asteroid(World& w, Object& o, int magnitude=3) {
 	o.angular = 0.1;
 	o.pos.x = std::uniform_real_distribution<float>(-16, 16)(rng);
 	o.pos.y = std::uniform_real_distribution<float>(-9, 9)(rng);
-	float speed = 0.3;
-	float size = .4;
+	float sizes[] {.3, .6, 1, 2};
+	float speed_muls[] {4, 3, 2, 1};
+	float size = sizes[magnitude];
+	float speed = 0.3*speed_muls[magnitude];
 	float angle = std::uniform_real_distribution<float>(0, 44./7)(rng);
 	o.speed.x = cos(angle)*speed;
 	o.speed.y = sin(angle)*speed;
 	WrapScreen(w, o);
+	w.renderer.add(o, 0, size);
 	w.collisions.chaff.push_back(Collision::Entry{o, size});
-	w.messages.listen(o, "damage", [&](Object&) {
+	w.messages.listen(o, "damage", [&, magnitude](Object&) {
+		if (magnitude > 0) {
+			for (int i=0; i<3; ++i) {
+				Object& a = w.add_object();
+				Asteroid(w, a, magnitude-1);
+				a.pos = o.pos;
+			}
+		}
 		w.kill(o);
 		return true;
 	});
 }
+
+
 
 
 void Bullet(World& w, Object& o) {
@@ -363,7 +381,6 @@ void Player(World& w, Object& o) {
 		as.speed.y = sin(o.angle)*v;
 	});
 }
-
 
 int main(void)
 {
