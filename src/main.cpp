@@ -113,11 +113,15 @@ struct Renderer {
 	struct Entry {
 		Object& o;
 		unsigned model;
+		float* rotation;
 	};
 	list<Entry> entries;
 
 	void add(Object& o, unsigned model) {
-		entries.push_back(Entry { o, model });
+		entries.push_back(Entry { o, model, nullptr});
+	}
+	void add_with_rotation(Object& o, unsigned model, float* rotation) {
+		entries.push_back(Entry { o, model, rotation});
 	}
 
 	void render() {
@@ -130,11 +134,14 @@ struct Renderer {
 	void render(Entry& e) {
 		float x = e.o.pos.x;
 		float y = e.o.pos.y;
-		float r = 0;
 		const float* p = MODELS[e.model];
 		int c = SIZES[e.model];
 		glPushMatrix();
 		glTranslatef(x, y, 0);
+		if (e.rotation) {
+			float angle = (*e.rotation) - M_PI/2;
+			glRotatef(angle*180/M_PI, 0, 0, 1);
+		}
 		glVertexPointer(2, GL_FLOAT, 0, p);
 		glDrawArrays(GL_LINE_LOOP, 0, c);
 		glPopMatrix();
@@ -287,8 +294,8 @@ void Player(World& w, Object& o) {
 	o.speed.x = o.speed.y = 0;
 	WrapScreen(w, o);
 	w.collisions.chaff.push_back(Collision::Entry{o});
-	w.renderer.add(o, 1);
 	std::shared_ptr<float> angle(new float);
+	w.renderer.add_with_rotation(o, 1, angle.get());
 
 	w.on_tick(o, [&o, angle](){
 		if (glfwGetKey(window, GLFW_KEY_RIGHT)) {
