@@ -38,11 +38,11 @@ guid random_guid() {
 }
 
 struct Object {
-	Object() {}
-	Object(vec2 pos, vec2 speed) : pos(pos), speed(speed) {}
 	long guid = random_guid();
 	vec2 pos;
 	vec2 speed;
+	float angle = 0;
+	float angular = 0;
 
 	bool operator==(const Object& other) {
 		return guid == other.guid;
@@ -71,7 +71,7 @@ struct Collision {
 	list<Entry> bullets;
 
 	void check(function<void(Object&, Object&)> fn) {
-		float size = 0.1;
+		float size = 0.5;
 		for (auto x : chaff) {
 			for (auto y : bullets) {
 				if (x.o.pos.dist2(y.o.pos) < size*size) fn(x.o, y.o);
@@ -100,8 +100,8 @@ const float SHIP[] {
 	0, -SYD,
 };
 const float BULLET[] {
-	-1, 0,
-	1, 0
+	0, -.3,
+	0, .3,
 };
 
 const float* const MODELS[] { AST, SHIP, BULLET };
@@ -113,15 +113,11 @@ struct Renderer {
 	struct Entry {
 		Object& o;
 		unsigned model;
-		float* rotation;
 	};
 	list<Entry> entries;
 
 	void add(Object& o, unsigned model) {
-		entries.push_back(Entry { o, model, nullptr});
-	}
-	void add_with_rotation(Object& o, unsigned model, float* rotation) {
-		entries.push_back(Entry { o, model, rotation});
+		entries.push_back(Entry { o, model });
 	}
 
 	void render() {
@@ -138,8 +134,8 @@ struct Renderer {
 		int c = SIZES[e.model];
 		glPushMatrix();
 		glTranslatef(x, y, 0);
-		if (e.rotation) {
-			float angle = (*e.rotation) - M_PI/2;
+		if (e.o.angle) {
+			float angle = (e.o.angle) - M_PI/2;
 			glRotatef(angle*180/M_PI, 0, 0, 1);
 		}
 		glVertexPointer(2, GL_FLOAT, 0, p);
@@ -162,6 +158,7 @@ struct World {
 		for (auto& o : objects) {
 			o.pos.x += o.speed.x * dt;
 			o.pos.y += o.speed.y * dt;
+			o.angle += o.angular * dt;
 		}
 		for (auto t : tick_events) {
 			t();
@@ -271,6 +268,7 @@ void KillWhenExitingScreen(World& w, Object& o) {
 
 void Asteroid(World& w, Object& o) {
 	w.renderer.add(o, 0);
+	o.angular = 0.1;
 	o.pos.x = std::uniform_real_distribution<float>(-16, 16)(rng);
 	o.pos.y = std::uniform_real_distribution<float>(-9, 9)(rng);
 	float speed = 0.3;
@@ -294,30 +292,29 @@ void Player(World& w, Object& o) {
 	o.speed.x = o.speed.y = 0;
 	WrapScreen(w, o);
 	w.collisions.chaff.push_back(Collision::Entry{o});
-	std::shared_ptr<float> angle(new float);
-	w.renderer.add_with_rotation(o, 1, angle.get());
+	w.renderer.add(o, 1);
 
-	w.on_tick(o, [&o, angle](){
+	w.on_tick(o, [&o](){
 		if (glfwGetKey(window, GLFW_KEY_RIGHT)) {
-			*angle -= 0.1;
+			o.angle -= 0.1;
 		}
 		if (glfwGetKey(window, GLFW_KEY_LEFT)) {
-			*angle += 0.1;
+			o.angle += 0.1;
 		}
 		if (glfwGetKey(window, GLFW_KEY_UP)) {
 			float acc = 0.1;
-			o.speed.x += cos(*angle)*acc;
-			o.speed.y += sin(*angle)*acc;
+			o.speed.x += cos(o.angle)*acc;
+			o.speed.y += sin(o.angle)*acc;
 		}
-		//ding_r(o.pos.x, o.pos.y, *angle);
 	});
-	w.bind_key(GLFW_KEY_SPACE, o, [&w, &o, angle](){
+	w.bind_key(GLFW_KEY_SPACE, o, [&w, &o](){
 		auto& as = w.add_object();
 		Bullet(w, as);
 		as.pos = o.pos;
+		as.angle = o.angle;
 		float v = 16;
-		as.speed.x = cos(*angle)*v;
-		as.speed.y = sin(*angle)*v;
+		as.speed.x = cos(o.angle)*v;
+		as.speed.y = sin(o.angle)*v;
 	});
 }
 
