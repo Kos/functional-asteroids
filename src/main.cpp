@@ -3,6 +3,7 @@
 #include <vector>
 #include <list>
 #include <functional>
+#include <algorithm>
 #include <random>
 #include <memory>
 #include "GL/gl.h"
@@ -66,21 +67,23 @@ struct Collision {
 	// For now, simple quadratic collision
 	struct Entry {
 		Object& o;
+		float size;
 	};
 	list<Entry> chaff;
 	list<Entry> bullets;
 
 	void check(function<void(Object&, Object&)> fn) {
-		float size = 0.5;
 		for (auto x : chaff) {
 			for (auto y : bullets) {
-				if (x.o.pos.dist2(y.o.pos) < size*size) fn(x.o, y.o);
+				float overlap = x.size+y.size;
+				if (x.o.pos.dist2(y.o.pos) < overlap*overlap) fn(x.o, y.o);
 			}
 		}
 		for (auto x : chaff) {
 			for (auto y : chaff) {
 				if (x.o == y.o) continue;
-				if (x.o.pos.dist2(y.o.pos) < size*size) fn(x.o, y.o);
+				float overlap = x.size+y.size;
+				if (x.o.pos.dist2(y.o.pos) < overlap*overlap) fn(x.o, y.o);
 			}
 		}
 	}
@@ -144,6 +147,28 @@ struct Renderer {
 	}
 };
 
+
+struct Messages {
+
+	struct Entry {
+		Object& listener;
+		const char* msg;
+		function<void(Object&)> cb;
+	};
+	list<Entry> entries;
+
+	void listen(Object& o, const char* msg, function<void(Object&)> cb) {
+		entries.push_back(Entry{o, msg, cb});
+	}
+
+	void send(Object& self, Object& tgt, const char* msg) {
+		auto i = std::find_if(entries.begin(), entries.end(), [&tgt, msg](Entry& e){ return e.listener == tgt && 0 == strcmp(e.msg, msg); });
+		if (i != entries.end()) {
+			i->cb(self);
+		}
+	}
+};
+
 struct World {
 	list<Object> objects; // could be a vector, but reallocs will kill references in callbacks
 	list<OwnedCallback<void>> tick_events;
@@ -153,6 +178,7 @@ struct World {
 
 	Collision collisions;
 	Renderer renderer;
+	Messages messages;
 
 	void tick(float dt) {
 		for (auto& o : objects) {
@@ -163,8 +189,10 @@ struct World {
 		for (auto t : tick_events) {
 			t();
 		}
-		collisions.check([](Object& a, Object& b) {
+		collisions.check([this](Object& a, Object& b) {
 			cout << "collision: " << a.guid << " x " << b.guid << endl;
+			messages.send(a, b, "collide");
+			messages.send(b, a, "collide");
 		});
 		for (auto o : killQueue) {
 			real_kill(*o);
@@ -272,26 +300,37 @@ void Asteroid(World& w, Object& o) {
 	o.pos.x = std::uniform_real_distribution<float>(-16, 16)(rng);
 	o.pos.y = std::uniform_real_distribution<float>(-9, 9)(rng);
 	float speed = 0.3;
+	float size = .4;
 	float angle = std::uniform_real_distribution<float>(0, 44./7)(rng);
 	o.speed.x = cos(angle)*speed;
 	o.speed.y = sin(angle)*speed;
 	WrapScreen(w, o);
-	w.collisions.chaff.push_back(Collision::Entry{o});
+	w.collisions.chaff.push_back(Collision::Entry{o, size});
+	w.messages.listen(o, "damage", [&](Object&) {
+		cout << "Received damage, killing";
+		w.kill(o);
+	});
 }
 
 
 void Bullet(World& w, Object& o) {
 	KillWhenExitingScreen(w, o);
 	w.renderer.add(o, 2);
-	w.collisions.bullets.push_back(Collision::Entry{o});
+	float size = 0.2;
+	w.collisions.bullets.push_back(Collision::Entry{o, size});
+	w.messages.listen(o, "collide", [&](Object& hit) {
+		cout << "Received collide, sending damage" << endl;
+		w.messages.send(o, hit, "damage");
+	});
 }
 
 
 void Player(World& w, Object& o) {
+	float size = .5;
 	o.pos.x = o.pos.y = 0;
 	o.speed.x = o.speed.y = 0;
 	WrapScreen(w, o);
-	w.collisions.chaff.push_back(Collision::Entry{o});
+	w.collisions.chaff.push_back(Collision::Entry{o, size});
 	w.renderer.add(o, 1);
 
 	w.on_tick(o, [&o](){
