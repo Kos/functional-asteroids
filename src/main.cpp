@@ -79,8 +79,9 @@ struct Collision {
 				if (x.o.pos.dist2(y.o.pos) < overlap*overlap) fn(x.o, y.o);
 			}
 		}
-		for (auto x : chaff) {
-			for (auto y : chaff) {
+		for (auto i = chaff.begin(); i != chaff.end(); ++i) {
+			for (auto j = i; j != chaff.end(); ++j) {
+				auto x = *i, y = *j;
 				if (x.o == y.o) continue;
 				float overlap = x.size+y.size;
 				if (x.o.pos.dist2(y.o.pos) < overlap*overlap) fn(x.o, y.o);
