@@ -129,7 +129,6 @@ struct Renderer {
 
 	Entry& add(Object& o, unsigned model, float scale=1) {
 		entries.push_back(Entry { o, model, scale });
-		cout << "Added " << o.guid << " with scale " << scale << endl;
 		return entries.back();
 	}
 
@@ -158,6 +157,34 @@ struct Renderer {
 		glVertexPointer(2, GL_FLOAT, 0, p);
 		glDrawArrays(GL_LINE_LOOP, 0, c);
 		glPopMatrix();
+	}
+};
+
+struct Timeouts {
+
+	struct Entry {
+		Object& owner;
+		double time;
+		function<void()> callback;
+	};
+
+	list<Entry> entries; // TODO keep sorted
+
+	void add(Object& owner, double delay, function<void()> callback) {
+		double time = glfwGetTime() + delay;
+		entries.push_back(Entry{owner, time, callback});
+	}
+
+	void fire() {
+		double now = glfwGetTime();
+		for (auto it = entries.begin(); it != entries.end(); ) {
+			if (it->time < now) {
+				it->callback();
+				it = entries.erase(it);
+			} else {
+				++it;
+			}
+		}
 	}
 };
 
@@ -196,6 +223,7 @@ struct World {
 	Collision collisions;
 	Renderer renderer;
 	Messages messages;
+	Timeouts timeouts;
 
 	void tick(float dt) {
 		for (auto& o : objects) {
@@ -207,10 +235,10 @@ struct World {
 			t();
 		}
 		collisions.check([this](Object& a, Object& b) {
-			// cout << "collision: " << a.guid << " x " << b.guid << endl;
 			messages.send(a, b, "collide");
 			messages.send(b, a, "collide");
 		});
+		timeouts.fire();
 		for (auto o : killQueue) {
 			real_kill(*o);
 		}
@@ -269,6 +297,7 @@ struct World {
 		collisions.bullets.remove_if([&](Collision::Entry& e) { return e.o == o; });
 		renderer.entries.remove_if([&](Renderer::Entry& e) { return e.o == o; });
 		messages.entries.remove_if([&](Messages::Entry& e) { return e.listener == o; });
+		timeouts.entries.remove_if([&](Timeouts::Entry& e) { return e.owner == o; });
 		objects.remove(o);
 
 	}
@@ -279,8 +308,6 @@ World* cb_world;
 void cb_key(GLFWwindow*, int key, int scancode, int action, int mods) {
 	cb_world->keyfun(key, scancode, action, mods);
 }
-
-
 
 void WrapScreen(World& w, Object& o) {
 	w.tick_events.push_back(OwnedCallback<void>{o, [&o](){
@@ -338,11 +365,8 @@ void Asteroid(World& w, Object& o, int magnitude=3) {
 	});
 }
 
-
-
-
 void Bullet(World& w, Object& o) {
-	KillWhenExitingScreen(w, o);
+	WrapScreen(w, o);
 	w.renderer.add(o, 2);
 	float size = 0.2;
 	w.collisions.bullets.push_back(Collision::Entry{o, size});
@@ -353,8 +377,10 @@ void Bullet(World& w, Object& o) {
 		}
 		return true;
 	});
+	w.timeouts.add(o, 0.5, [&]() {
+		w.kill(o);
+	});
 }
-
 
 void Player(World& w, Object& o) {
 	float size = .5;
