@@ -163,7 +163,7 @@ struct Renderer {
 struct Timeouts {
 
 	struct Entry {
-		Object& owner;
+		Object* owner; // optional
 		double time;
 		function<void()> callback;
 	};
@@ -171,6 +171,9 @@ struct Timeouts {
 	list<Entry> entries; // TODO keep sorted
 
 	void add(Object& owner, double delay, function<void()> callback) {
+		add(&owner, delay, callback);
+	}
+	void add(Object* owner, double delay, function<void()> callback) {
 		double time = glfwGetTime() + delay;
 		entries.push_back(Entry{owner, time, callback});
 	}
@@ -297,7 +300,7 @@ struct World {
 		collisions.bullets.remove_if([&](Collision::Entry& e) { return e.o == o; });
 		renderer.entries.remove_if([&](Renderer::Entry& e) { return e.o == o; });
 		messages.entries.remove_if([&](Messages::Entry& e) { return e.listener == o; });
-		timeouts.entries.remove_if([&](Timeouts::Entry& e) { return e.owner == o; });
+		timeouts.entries.remove_if([&](Timeouts::Entry& e) { return e.owner == &o; });
 		objects.remove(o);
 
 	}
@@ -363,6 +366,10 @@ void Asteroid(World& w, Object& o, int magnitude=3) {
 		w.kill(o);
 		return true;
 	});
+	w.messages.listen(o, "collide", [&](Object& hit) {
+		w.messages.send(o, hit, "crash");
+		return true;
+	});
 }
 
 void Bullet(World& w, Object& o) {
@@ -417,6 +424,13 @@ void Player(World& w, Object& o) {
 		as.speed.x = cos(o.angle)*v;
 		as.speed.y = sin(o.angle)*v;
 	});
+	w.messages.listen(o, "crash", [&w, &o](Object&) {
+		w.timeouts.add(nullptr, 2, [&w]() {
+			Player(w, w.add_object());
+		});
+		w.kill(o);
+		return true;
+	});
 }
 
 int main(void)
@@ -424,7 +438,6 @@ int main(void)
 	if (!glfwInit())
 		return -1;
 	glfwWindowHint(GLFW_SAMPLES, 4);
-
 	// window = glfwCreateWindow(1366, 768, "Hello World", glfwGetPrimaryMonitor(), 0);
 	window = glfwCreateWindow(800, 480, "Hello World", 0, 0);
 
