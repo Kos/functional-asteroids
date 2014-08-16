@@ -102,13 +102,20 @@ const float SHIP[] {
 	SDX, -SYDD,
 	0, -SYD,
 };
+const float FL = 0.4f;
+const float FLAME[] {
+	-SDX*0.5f, -SYDD,
+	0, -SYDD-FL,
+	SDX*0.5, -SYDD,
+	0, -SYDD-FL,
+};
 const float BULLET[] {
 	0, -.3,
 	0, .3,
 };
 
-const float* const MODELS[] { AST, SHIP, BULLET };
-static constexpr int SIZES[] { 4, 4, 2 };
+const float* const MODELS[] { AST, SHIP, BULLET, FLAME };
+static constexpr int SIZES[] { 4, 4, 2, 4};
 
 
 struct Renderer {
@@ -120,9 +127,10 @@ struct Renderer {
 	};
 	list<Entry> entries;
 
-	void add(Object& o, unsigned model, float scale=1) {
+	Entry& add(Object& o, unsigned model, float scale=1) {
 		entries.push_back(Entry { o, model, scale });
 		cout << "Added " << o.guid << " with scale " << scale << endl;
+		return entries.back();
 	}
 
 	void render() {
@@ -355,8 +363,10 @@ void Player(World& w, Object& o) {
 	WrapScreen(w, o);
 	w.collisions.chaff.push_back(Collision::Entry{o, size});
 	w.renderer.add(o, 1);
+	auto& flame_entry = w.renderer.add(o, 3);
+	flame_entry.scale = 0;
 
-	w.on_tick(o, [&o](){
+	w.on_tick(o, [&o, &flame_entry](){
 		if (glfwGetKey(window, GLFW_KEY_RIGHT)) {
 			o.angle -= 0.1;
 		}
@@ -367,6 +377,9 @@ void Player(World& w, Object& o) {
 			float acc = 0.1;
 			o.speed.x += cos(o.angle)*acc;
 			o.speed.y += sin(o.angle)*acc;
+			flame_entry.scale = std::min(1.0f, flame_entry.scale += 0.1);
+		} else {
+			flame_entry.scale = std::max(0.0f, flame_entry.scale -= 0.1);
 		}
 	});
 	w.bind_key(GLFW_KEY_SPACE, o, [&w, &o](){
