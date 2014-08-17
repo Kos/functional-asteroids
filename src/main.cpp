@@ -44,6 +44,7 @@ struct Object {
 	vec2 speed;
 	float angle = 0;
 	float angular = 0;
+	bool dead = false;
 
 	bool operator==(const Object& other) {
 		return guid == other.guid;
@@ -75,6 +76,7 @@ struct Collision {
 	void check(function<void(Object&, Object&)> fn) {
 		for (auto x : chaff) {
 			for (auto y : bullets) {
+				if (x.o.dead or y.o.dead) continue;
 				float overlap = x.size+y.size;
 				if (x.o.pos.dist2(y.o.pos) < overlap*overlap) fn(x.o, y.o);
 			}
@@ -82,6 +84,7 @@ struct Collision {
 		for (auto i = chaff.begin(); i != chaff.end(); ++i) {
 			for (auto j = i; j != chaff.end(); ++j) {
 				auto x = *i, y = *j;
+				if (x.o.dead or y.o.dead) continue;
 				if (x.o == y.o) continue;
 				float overlap = x.size+y.size;
 				if (x.o.pos.dist2(y.o.pos) < overlap*overlap) fn(x.o, y.o);
@@ -290,6 +293,7 @@ struct World {
 	}
 
 	void kill(Object& o) {
+		o.dead = true;
 		killQueue.push_back(&o);
 	}
 
